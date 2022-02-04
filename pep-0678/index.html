@@ -1,0 +1,426 @@
+
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light dark" />
+    <title>PEP 678 – Enriching Exceptions with Notes | peps.python.org</title>
+    <link rel="shortcut icon" href="../_static/py.png"/>
+    <link rel="stylesheet" href="../_static/style.css" type="text/css" />
+    <link rel="stylesheet" href="../_static/mq.css" type="text/css" />
+    <link rel="stylesheet" href="../_static/dark.css" type="text/css" media="(prefers-color-scheme: dark)" id="css-dark"/>
+    <link rel="stylesheet" href="../_static/pygments.css" type="text/css" media="(prefers-color-scheme: light)" id="pyg" />
+    <link rel="stylesheet" href="../_static/pygments_dark.css" type="text/css" media="(prefers-color-scheme: dark)" id="pyg-dark" />
+    <link href="https://fonts.googleapis.com/css2?family=Source+Sans+Pro:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+    <meta name="description" content="Python Enhancement Proposals (PEPs)"/>
+</head>
+<body>
+    <section id="pep-page-section">
+        <header>
+            <h1>Python Enhancement Proposals</h1>
+            <ul class="breadcrumbs">
+                <li><a href="https://www.python.org/" title="The Python Programming Language">Python</a> &raquo; </li>
+                <li><a href="../pep-0000/">PEP Index</a> &raquo; </li>
+                <li>PEP 678 – Enriching Exceptions with Notes</li>
+            </ul>
+            <button onClick="toggleColourScheme()"></button>
+        </header>
+        <article>
+            <section id="pep-content">
+<h1 class="page-title">PEP 678 – Enriching Exceptions with Notes</h1>
+<dl class="rfc2822 field-list simple">
+<dt class="field-odd">PEP</dt>
+<dd class="field-odd">678</dd>
+<dt class="field-even">Title</dt>
+<dd class="field-even">Enriching Exceptions with Notes</dd>
+<dt class="field-odd">Author</dt>
+<dd class="field-odd">Zac Hatfield-Dodds &lt;zac&#32;&#97;t&#32;zhd.dev&gt;</dd>
+<dt class="field-even">Sponsor</dt>
+<dd class="field-even">Irit Katriel</dd>
+<dt class="field-odd">Discussions-To</dt>
+<dd class="field-odd"><a class="reference external" href="https://discuss.python.org/t/pep-678-enriching-exceptions-with-notes/13374">https://discuss.python.org/t/pep-678-enriching-exceptions-with-notes/13374</a></dd>
+<dt class="field-even">Status</dt>
+<dd class="field-even">Draft</dd>
+<dt class="field-odd">Type</dt>
+<dd class="field-odd">Standards Track</dd>
+<dt class="field-even">Requires</dt>
+<dd class="field-even"><a class="reference external" href="../pep-0654">654</a></dd>
+<dt class="field-odd">Created</dt>
+<dd class="field-odd">20-Dec-2021</dd>
+<dt class="field-even">Python-Version</dt>
+<dd class="field-even">3.11</dd>
+<dt class="field-odd">Post-History</dt>
+<dd class="field-odd">2022-01-27</dd>
+</dl>
+<hr class="docutils" />
+<section id="contents">
+<h2>Contents</h2>
+<ul class="simple">
+<li><a class="reference internal" href="#abstract">Abstract</a></li>
+<li><a class="reference internal" href="#motivation">Motivation</a><ul>
+<li><a class="reference internal" href="#example-usage">Example usage</a></li>
+<li><a class="reference internal" href="#non-goals">Non-goals</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#specification">Specification</a></li>
+<li><a class="reference internal" href="#backwards-compatibility">Backwards Compatibility</a></li>
+<li><a class="reference internal" href="#how-to-teach-this">How to Teach This</a></li>
+<li><a class="reference internal" href="#reference-implementation">Reference Implementation</a></li>
+<li><a class="reference internal" href="#rejected-ideas">Rejected Ideas</a><ul>
+<li><a class="reference internal" href="#use-print-or-logging-etc">Use <code class="docutils literal notranslate"><span class="pre">print()</span></code> (or <code class="docutils literal notranslate"><span class="pre">logging</span></code>, etc.)</a></li>
+<li><a class="reference internal" href="#raise-wrapper-explanation-from-err"><code class="docutils literal notranslate"><span class="pre">raise</span> <span class="pre">Wrapper(explanation)</span> <span class="pre">from</span> <span class="pre">err</span></code></a></li>
+<li><a class="reference internal" href="#subclass-exception-and-add-note-downstream">Subclass Exception and add <code class="docutils literal notranslate"><span class="pre">__note__</span></code> downstream</a></li>
+<li><a class="reference internal" href="#store-notes-in-exceptiongroups">Store notes in <code class="docutils literal notranslate"><span class="pre">ExceptionGroup</span></code>s</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#possible-future-enhancements">Possible Future Enhancements</a><ul>
+<li><a class="reference internal" href="#allow-any-object-and-cast-to-string-for-display">Allow any object, and cast to string for display</a></li>
+<li><a class="reference internal" href="#add-a-helper-function-contextlib-add-exc-note">Add a helper function <code class="docutils literal notranslate"><span class="pre">contextlib.add_exc_note()</span></code></a></li>
+<li><a class="reference internal" href="#augment-the-raise-statement">Augment the <code class="docutils literal notranslate"><span class="pre">raise</span></code> statement</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#references">References</a></li>
+<li><a class="reference internal" href="#copyright">Copyright</a></li>
+</ul>
+</section>
+<section id="abstract">
+<h2><a class="toc-backref" href="#abstract">Abstract</a></h2>
+<p>Exception objects are typically initialized with a message that describes the
+error which has occurred.  Because further information may be available when the
+exception is caught and re-raised, or included in an <code class="docutils literal notranslate"><span class="pre">ExceptionGroup</span></code>, this PEP
+proposes to add a <code class="docutils literal notranslate"><span class="pre">.__note__</span></code> attribute and update the builtin traceback formatting
+code to include it in the formatted traceback following the exception string.</p>
+<p>This is particularly useful in relation to <span class="target" id="index-0"></span><a class="pep reference external" href="../pep-0654"><strong>PEP 654</strong></a> <code class="docutils literal notranslate"><span class="pre">ExceptionGroup</span></code>s, which
+make previous workarounds ineffective or confusing.  Use cases have been identified
+in the standard library, Hypothesis and <code class="docutils literal notranslate"><span class="pre">cattrs</span></code> packages, and common code
+patterns with retries.</p>
+</section>
+<section id="motivation">
+<h2><a class="toc-backref" href="#motivation">Motivation</a></h2>
+<p>When an exception is created in order to be raised, it is usually initialized
+with information that describes the error that has occurred. There are cases
+where it is useful to add information after the exception was caught.
+For example,</p>
+<ul class="simple">
+<li>testing libraries may wish to show the values involved in a failing assertion,
+or the steps to reproduce a failure (e.g. <code class="docutils literal notranslate"><span class="pre">pytest</span></code> and <code class="docutils literal notranslate"><span class="pre">hypothesis</span></code>; example below).</li>
+<li>code which retries an operation on error may wish to associate an iteration, timestamp,
+or other explanation with each of several errors - especially if re-raising them in
+an <code class="docutils literal notranslate"><span class="pre">ExceptionGroup</span></code>.</li>
+<li>programming environments for novices can provide more detailed descriptions
+of various errors, and tips for resolving them (e.g. <code class="docutils literal notranslate"><span class="pre">friendly-traceback</span></code>).</li>
+</ul>
+<p>Existing approaches must pass this additional information around while keeping
+it in sync with the state of raised, and potentially caught or chained, exceptions.
+This is already error-prone, and made more difficult by <span class="target" id="index-1"></span><a class="pep reference external" href="../pep-0654"><strong>PEP 654</strong></a> <code class="docutils literal notranslate"><span class="pre">ExceptionGroup</span></code>s,
+so the time is right for a built-in solution.  We therefore propose to add a mutable
+field <code class="docutils literal notranslate"><span class="pre">__note__</span></code> to <code class="docutils literal notranslate"><span class="pre">BaseException</span></code>, which can be assigned a string - and
+if assigned, is automatically displayed in formatted tracebacks.</p>
+<section id="example-usage">
+<h3><a class="toc-backref" href="#example-usage">Example usage</a></h3>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="k">try</span><span class="p">:</span>
+<span class="gp">... </span>    <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="s1">&#39;bad type&#39;</span><span class="p">)</span>
+<span class="gp">... </span><span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+<span class="gp">... </span>    <span class="n">e</span><span class="o">.</span><span class="n">__note__</span> <span class="o">=</span> <span class="s1">&#39;Add some information&#39;</span>
+<span class="gp">... </span>    <span class="k">raise</span>
+<span class="gp">...</span>
+<span class="gt">Traceback (most recent call last):</span>
+  File <span class="nb">&quot;&lt;stdin&gt;&quot;</span>, line <span class="m">2</span>, in <span class="n">&lt;module&gt;</span>
+<span class="gr">TypeError</span>: <span class="n">bad type</span>
+<span class="go">Add some information</span>
+<span class="go">&gt;&gt;&gt;</span>
+</pre></div>
+</div>
+<p>When collecting exceptions into an exception group, we may want
+to add context information for the individual errors. In the following
+example with <a class="reference external" href="https://github.com/HypothesisWorks/hypothesis/pull/3191">Hypothesis’ proposed support for ExceptionGroup</a>, each
+exception includes a note of the minimal failing example:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">hypothesis</span> <span class="kn">import</span> <span class="n">given</span><span class="p">,</span> <span class="n">strategies</span> <span class="k">as</span> <span class="n">st</span><span class="p">,</span> <span class="n">target</span>
+
+<span class="nd">@given</span><span class="p">(</span><span class="n">st</span><span class="o">.</span><span class="n">integers</span><span class="p">())</span>
+<span class="k">def</span> <span class="nf">test</span><span class="p">(</span><span class="n">x</span><span class="p">):</span>
+    <span class="k">assert</span> <span class="n">x</span> <span class="o">&lt;</span> <span class="mi">0</span>
+    <span class="k">assert</span> <span class="n">x</span> <span class="o">&gt;</span> <span class="mi">0</span>
+
+
+<span class="o">+</span> <span class="ne">Exception</span> <span class="n">Group</span> <span class="n">Traceback</span> <span class="p">(</span><span class="n">most</span> <span class="n">recent</span> <span class="n">call</span> <span class="n">last</span><span class="p">):</span>
+<span class="o">|</span>   <span class="n">File</span> <span class="s2">&quot;test.py&quot;</span><span class="p">,</span> <span class="n">line</span> <span class="mi">4</span><span class="p">,</span> <span class="ow">in</span> <span class="n">test</span>
+<span class="o">|</span>     <span class="k">def</span> <span class="nf">test</span><span class="p">(</span><span class="n">x</span><span class="p">):</span>
+<span class="o">|</span>
+<span class="o">|</span>   <span class="n">File</span> <span class="s2">&quot;hypothesis/core.py&quot;</span><span class="p">,</span> <span class="n">line</span> <span class="mi">1202</span><span class="p">,</span> <span class="ow">in</span> <span class="n">wrapped_test</span>
+<span class="o">|</span>     <span class="k">raise</span> <span class="n">the_error_hypothesis_found</span>
+<span class="o">|</span>     <span class="o">^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^</span>
+<span class="o">|</span> <span class="n">ExceptionGroup</span><span class="p">:</span> <span class="n">Hypothesis</span> <span class="n">found</span> <span class="mi">2</span> <span class="n">distinct</span> <span class="n">failures</span><span class="o">.</span>
+<span class="o">+-+----------------</span> <span class="mi">1</span> <span class="o">----------------</span>
+    <span class="o">|</span> <span class="n">Traceback</span> <span class="p">(</span><span class="n">most</span> <span class="n">recent</span> <span class="n">call</span> <span class="n">last</span><span class="p">):</span>
+    <span class="o">|</span>   <span class="n">File</span> <span class="s2">&quot;test.py&quot;</span><span class="p">,</span> <span class="n">line</span> <span class="mi">6</span><span class="p">,</span> <span class="ow">in</span> <span class="n">test</span>
+    <span class="o">|</span>     <span class="k">assert</span> <span class="n">x</span> <span class="o">&gt;</span> <span class="mi">0</span>
+    <span class="o">|</span>     <span class="o">^^^^^^^^^^^^</span>
+    <span class="o">|</span> <span class="ne">AssertionError</span><span class="p">:</span> <span class="k">assert</span> <span class="o">-</span><span class="mi">1</span> <span class="o">&gt;</span> <span class="mi">0</span>
+    <span class="o">|</span>
+    <span class="o">|</span> <span class="n">Falsifying</span> <span class="n">example</span><span class="p">:</span> <span class="n">test</span><span class="p">(</span>
+    <span class="o">|</span>     <span class="n">x</span><span class="o">=-</span><span class="mi">1</span><span class="p">,</span>
+    <span class="o">|</span> <span class="p">)</span>
+    <span class="o">+----------------</span> <span class="mi">2</span> <span class="o">----------------</span>
+    <span class="o">|</span> <span class="n">Traceback</span> <span class="p">(</span><span class="n">most</span> <span class="n">recent</span> <span class="n">call</span> <span class="n">last</span><span class="p">):</span>
+    <span class="o">|</span>   <span class="n">File</span> <span class="s2">&quot;test.py&quot;</span><span class="p">,</span> <span class="n">line</span> <span class="mi">5</span><span class="p">,</span> <span class="ow">in</span> <span class="n">test</span>
+    <span class="o">|</span>     <span class="k">assert</span> <span class="n">x</span> <span class="o">&lt;</span> <span class="mi">0</span>
+    <span class="o">|</span>     <span class="o">^^^^^^^^^^^^</span>
+    <span class="o">|</span> <span class="ne">AssertionError</span><span class="p">:</span> <span class="k">assert</span> <span class="mi">0</span> <span class="o">&lt;</span> <span class="mi">0</span>
+    <span class="o">|</span>
+    <span class="o">|</span> <span class="n">Falsifying</span> <span class="n">example</span><span class="p">:</span> <span class="n">test</span><span class="p">(</span>
+    <span class="o">|</span>     <span class="n">x</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
+    <span class="o">|</span> <span class="p">)</span>
+    <span class="o">+------------------------------------</span>
+</pre></div>
+</div>
+</section>
+<section id="non-goals">
+<h3><a class="toc-backref" href="#non-goals">Non-goals</a></h3>
+<p><code class="docutils literal notranslate"><span class="pre">__note__</span></code> is <em>not</em> intended to carry structured data.  If your note is for use by
+a program rather than display to a human, we recommend instead (or additionally) choosing a convention
+for an attribute like e.g. <code class="docutils literal notranslate"><span class="pre">err._parse_errors</span> <span class="pre">=</span> <span class="pre">...</span></code> on the error or <code class="docutils literal notranslate"><span class="pre">ExceptionGroup</span></code> <a class="footnote-reference brackets" href="#id12" id="id1">[1]</a> <a class="footnote-reference brackets" href="#id13" id="id2">[2]</a></p>
+<p>As a rule of thumb, prefer <a class="reference external" href="https://docs.python.org/3/tutorial/errors.html#exception-chaining">exception chaining</a>
+when the error is going to be re-raised or handled as an individual error, and prefer
+<code class="docutils literal notranslate"><span class="pre">__note__</span></code> when you are collecting multiple exception objects to handle together or later. <a class="footnote-reference brackets" href="#id14" id="id3">[3]</a></p>
+</section>
+</section>
+<section id="specification">
+<h2><a class="toc-backref" href="#specification">Specification</a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">BaseException</span></code> gains a new mutable attribute <code class="docutils literal notranslate"><span class="pre">__note__</span></code>, which defaults to
+<code class="docutils literal notranslate"><span class="pre">None</span></code> and may have a string assigned.  When an exception with a note is displayed,
+the note is displayed immediately after the exception.</p>
+<p>Assigning a new string value overrides an existing note; if concatenation is desired
+users are responsible for implementing it with e.g.:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">e</span><span class="o">.</span><span class="n">__note__</span> <span class="o">=</span> <span class="n">msg</span> <span class="k">if</span> <span class="n">e</span><span class="o">.</span><span class="n">__note__</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">e</span><span class="o">.</span><span class="n">__note__</span> <span class="o">+</span> <span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span> <span class="o">+</span> <span class="n">msg</span>
+</pre></div>
+</div>
+<p>It is an error to assign a non-string-or-<code class="docutils literal notranslate"><span class="pre">None</span></code> value to <code class="docutils literal notranslate"><span class="pre">__note__</span></code>,
+or to attempt to delete the attribute.</p>
+<p><code class="docutils literal notranslate"><span class="pre">BaseExceptionGroup.subgroup</span></code> and <code class="docutils literal notranslate"><span class="pre">BaseExceptionGroup.split</span></code>
+copy the <code class="docutils literal notranslate"><span class="pre">__note__</span></code> of the original exception group to the parts.</p>
+</section>
+<section id="backwards-compatibility">
+<h2><a class="toc-backref" href="#backwards-compatibility">Backwards Compatibility</a></h2>
+<p>System-defined or “dunder” names (following the pattern <code class="docutils literal notranslate"><span class="pre">__*__</span></code>) are part of the
+language specification, with unassigned names reserved for future use and subject
+to breakage without warning <a class="footnote-reference brackets" href="#id15" id="id4">[4]</a>.</p>
+<p>We are also unaware of any code which <em>would</em> be broken by adding <code class="docutils literal notranslate"><span class="pre">__note__</span></code>;
+assigning to a <code class="docutils literal notranslate"><span class="pre">.__note__</span></code> attribute already <em>works</em> on current versions of
+Python - the note just won’t be displayed with the traceback and exception message.</p>
+</section>
+<section id="how-to-teach-this">
+<h2><a class="toc-backref" href="#how-to-teach-this">How to Teach This</a></h2>
+<p>The <code class="docutils literal notranslate"><span class="pre">__note__</span></code> attribute will be documented as part of the language standard,
+and explained as part of the tutorial “Errors and Exceptions” <a class="footnote-reference brackets" href="#id16" id="id5">[5]</a>.</p>
+</section>
+<section id="reference-implementation">
+<h2><a class="toc-backref" href="#reference-implementation">Reference Implementation</a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">BaseException.__note__</span></code> was implemented in <a class="footnote-reference brackets" href="#id17" id="id6">[6]</a> and released in CPython 3.11.0a3,
+following discussions related to <span class="target" id="index-2"></span><a class="pep reference external" href="../pep-0654"><strong>PEP 654</strong></a>. <a class="footnote-reference brackets" href="#id18" id="id7">[7]</a> <a class="footnote-reference brackets" href="#id19" id="id8">[8]</a> <a class="footnote-reference brackets" href="#id20" id="id9">[9]</a></p>
+</section>
+<section id="rejected-ideas">
+<h2><a class="toc-backref" href="#rejected-ideas">Rejected Ideas</a></h2>
+<section id="use-print-or-logging-etc">
+<h3><a class="toc-backref" href="#use-print-or-logging-etc">Use <code class="docutils literal notranslate"><span class="pre">print()</span></code> (or <code class="docutils literal notranslate"><span class="pre">logging</span></code>, etc.)</a></h3>
+<p>Reporting explanatory or contextual information about an error by printing or logging
+has historically been an acceptable workaround.  However, we dislike the way this
+separates the content from the exception object it refers to - which can lead to
+“orphan” reports if the error was caught and handled later, or merely significant
+difficulties working out which explanation corresponds to which error.
+The new <code class="docutils literal notranslate"><span class="pre">ExceptionGroup</span></code> type intensifies these existing challenges.</p>
+<p>Keeping the <code class="docutils literal notranslate"><span class="pre">__note__</span></code> attached to the exception object, like the traceback,
+eliminates these problems.</p>
+</section>
+<section id="raise-wrapper-explanation-from-err">
+<h3><a class="toc-backref" href="#raise-wrapper-explanation-from-err"><code class="docutils literal notranslate"><span class="pre">raise</span> <span class="pre">Wrapper(explanation)</span> <span class="pre">from</span> <span class="pre">err</span></code></a></h3>
+<p>An alternative pattern is to use exception chaining: by raising a ‘wrapper’ exception
+containing the context or explanation <code class="docutils literal notranslate"><span class="pre">from</span></code> the current exception, we avoid the
+separation challenges from <code class="docutils literal notranslate"><span class="pre">print()</span></code>.  However, this has two key problems.</p>
+<p>First, it changes the type of the exception, which is often a breaking change for
+downstream code.  We consider <em>always</em> raising a <code class="docutils literal notranslate"><span class="pre">Wrapper</span></code> exception unacceptably
+inelegant; but because custom exception types might have any number of required
+arguments we can’t always create an instance of the <em>same</em> type with our explanation.
+In cases where the exact exception type is known this can work, such as the standard
+library <code class="docutils literal notranslate"><span class="pre">http.client</span></code> code <a class="footnote-reference brackets" href="#id21" id="id10">[10]</a>, but not for libraries which call user code.</p>
+<p>Second, exception chaining reports several lines of additional detail, which are
+distracting for experienced users and can be very confusing for beginners.
+For example, six of the eleven lines reported for this simple example relate to
+exception chaining, and are unnecessary with <code class="docutils literal notranslate"><span class="pre">BaseException.__note__</span></code>:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">class</span> <span class="nc">Explanation</span><span class="p">(</span><span class="ne">Exception</span><span class="p">):</span>
+    <span class="k">def</span> <span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span> <span class="o">+</span> <span class="nb">str</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span>
+
+<span class="k">try</span><span class="p">:</span>
+    <span class="k">raise</span> <span class="ne">AssertionError</span><span class="p">(</span><span class="s2">&quot;Failed!&quot;</span><span class="p">)</span>
+<span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+    <span class="k">raise</span> <span class="n">Explanation</span><span class="p">(</span><span class="s2">&quot;You can reproduce this error by ...&quot;</span><span class="p">)</span> <span class="kn">from</span> <span class="nn">e</span>
+</pre></div>
+</div>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>$ python example.py
+Traceback (most recent call last):
+File &quot;example.py&quot;, line 6, in &lt;module&gt;
+    raise AssertionError(why)
+AssertionError: Failed!
+                                                                        # These lines are
+The above exception was the direct cause of the following exception:    # confusing for new
+                                                                        # users, and they
+Traceback (most recent call last):                                      # only exist due
+File &quot;example.py&quot;, line 8, in &lt;module&gt;                                  # to implementation
+    raise Explanation(msg) from e                                       # constraints :-(
+Explanation:                                                            # Hence this PEP!
+You can reproduce this error by ...
+</pre></div>
+</div>
+<p><strong>In cases where these two problems do not apply, we encourage use
+of exception chaining rather than</strong> <code class="docutils literal notranslate"><span class="pre">__note__</span></code>.</p>
+</section>
+<section id="subclass-exception-and-add-note-downstream">
+<h3><a class="toc-backref" href="#subclass-exception-and-add-note-downstream">Subclass Exception and add <code class="docutils literal notranslate"><span class="pre">__note__</span></code> downstream</a></h3>
+<p>Traceback printing is built into the C code, and reimplemented in pure Python in
+traceback.py. To get <code class="docutils literal notranslate"><span class="pre">err.__note__</span></code> printed from a downstream implementation
+would <em>also</em> require writing custom traceback-printing code; while this could
+be shared between projects and reuse some pieces of traceback.py we prefer to
+implement this once, upstream.</p>
+<p>Custom exception types could implement their <code class="docutils literal notranslate"><span class="pre">__str__</span></code> method to include our
+proposed <code class="docutils literal notranslate"><span class="pre">__note__</span></code> semantics, but this would be rarely and inconsistently
+applicable.</p>
+</section>
+<section id="store-notes-in-exceptiongroups">
+<h3><a class="toc-backref" href="#store-notes-in-exceptiongroups">Store notes in <code class="docutils literal notranslate"><span class="pre">ExceptionGroup</span></code>s</a></h3>
+<p>Initial discussions proposed making a more focussed change by thinking about how to
+associate messages with the nested exceptions in <code class="docutils literal notranslate"><span class="pre">ExceptionGroup</span></code> s, such as a list
+of notes or mapping of exceptions to notes.  However, this would force a remarkably
+awkward API and retains a lesser form of the cross-referencing problem discussed
+under “use <code class="docutils literal notranslate"><span class="pre">print()</span></code>” above; if this PEP is rejected we prefer the status quo.
+Finally, of course, <code class="docutils literal notranslate"><span class="pre">__note__</span></code> is not only useful with <code class="docutils literal notranslate"><span class="pre">ExceptionGroup</span></code> s!</p>
+</section>
+</section>
+<section id="possible-future-enhancements">
+<h2><a class="toc-backref" href="#possible-future-enhancements">Possible Future Enhancements</a></h2>
+<p>In addition to rejected alternatives, there have been a range of suggestions which
+we believe should be deferred to a future version, when we have more experience with
+the uses (and perhaps misuses) of <code class="docutils literal notranslate"><span class="pre">__note__</span></code>.</p>
+<section id="allow-any-object-and-cast-to-string-for-display">
+<h3><a class="toc-backref" href="#allow-any-object-and-cast-to-string-for-display">Allow any object, and cast to string for display</a></h3>
+<p>We have not identified any scenario where libraries would want to do anything but either
+concatenate or replace notes, and so the additional complexity and interoperability
+challenges do not seem justified.</p>
+<p>Permitting any object would also force any future structured API to change the behaviour
+of already-legal code, whereas expanding the permitted contents of <code class="docutils literal notranslate"><span class="pre">__note__</span></code> from strings
+to include other objects is fully backwards-compatible.  In the absence of any proposed
+use-case (see also <a class="reference internal" href="#non-goals">Non-goals</a>), we prefer to begin with a restrictive API that can
+be relaxed later.</p>
+<p>We also note that converting an object to a string may raise an exception.  It’s more helpful
+for the traceback to point to the location where the note is attached to the exception,
+rather than where the exception and note are being formatted for display after propagation.</p>
+</section>
+<section id="add-a-helper-function-contextlib-add-exc-note">
+<h3><a class="toc-backref" href="#add-a-helper-function-contextlib-add-exc-note">Add a helper function <code class="docutils literal notranslate"><span class="pre">contextlib.add_exc_note()</span></code></a></h3>
+<p>It was suggested <a class="footnote-reference brackets" href="#id22" id="id11">[11]</a> that we add a utility such as the one below to the standard
+library. We are open to this idea, but do not see it as a core part of the
+proposal of this PEP as it can be added as an enhancement later.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="nd">@contextlib</span><span class="o">.</span><span class="n">contextmanager</span>
+<span class="k">def</span> <span class="nf">add_exc_note</span><span class="p">(</span><span class="n">note</span><span class="p">:</span> <span class="nb">str</span><span class="p">):</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">yield</span>
+    <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">err</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">err</span><span class="o">.</span><span class="n">__note__</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">err</span><span class="o">.</span><span class="n">__note__</span> <span class="o">=</span> <span class="n">note</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">err</span><span class="o">.</span><span class="n">__note__</span> <span class="o">=</span> <span class="n">err</span><span class="o">.</span><span class="n">__note__</span> <span class="o">+</span> <span class="s2">&quot;</span><span class="se">\n\n</span><span class="s2">&quot;</span> <span class="o">+</span> <span class="n">note</span>
+        <span class="k">raise</span>
+
+<span class="k">with</span> <span class="n">add_exc_note</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;While attempting to frobnicate </span><span class="si">{</span><span class="n">item</span><span class="si">=}</span><span class="s2">&quot;</span><span class="p">):</span>
+    <span class="n">frobnicate_or_raise</span><span class="p">(</span><span class="n">item</span><span class="p">)</span>
+</pre></div>
+</div>
+</section>
+<section id="augment-the-raise-statement">
+<h3><a class="toc-backref" href="#augment-the-raise-statement">Augment the <code class="docutils literal notranslate"><span class="pre">raise</span></code> statement</a></h3>
+<p>One discussion proposed <code class="docutils literal notranslate"><span class="pre">raise</span> <span class="pre">Exception()</span> <span class="pre">with</span> <span class="pre">&quot;note</span> <span class="pre">contents&quot;</span></code>, but this
+does not address the original motivation of compatibility with <code class="docutils literal notranslate"><span class="pre">ExceptionGroup</span></code>.</p>
+<p>Furthermore, we do not believe that the problem we are solving requires or justifies
+new language syntax.</p>
+</section>
+</section>
+<section id="references">
+<h2><a class="toc-backref" href="#references">References</a></h2>
+<dl class="footnote brackets">
+<dt class="label" id="id12">[<a href="#id1">1</a>]</dt>
+<dd><a class="reference external" href="https://discuss.python.org/t/accepting-pep-654-exception-groups-and-except/10813/26">https://discuss.python.org/t/accepting-pep-654-exception-groups-and-except/10813/26</a></dd>
+<dt class="label" id="id13">[<a href="#id2">2</a>]</dt>
+<dd><a class="reference external" href="https://bugs.python.org/issue46431">https://bugs.python.org/issue46431</a></dd>
+<dt class="label" id="id14">[<a href="#id3">3</a>]</dt>
+<dd>this principle was established in the 2003 mail thread which led to <span class="target" id="index-3"></span><a class="pep reference external" href="../pep-3134"><strong>PEP 3134</strong></a>,
+and included a proposal for a group-of-exceptions type!
+<a class="reference external" href="https://mail.python.org/pipermail/python-dev/2003-January/032492.html">https://mail.python.org/pipermail/python-dev/2003-January/032492.html</a></dd>
+<dt class="label" id="id15">[<a href="#id4">4</a>]</dt>
+<dd><a class="reference external" href="https://docs.python.org/3/reference/lexical_analysis.html#reserved-classes-of-identifiers">https://docs.python.org/3/reference/lexical_analysis.html#reserved-classes-of-identifiers</a></dd>
+<dt class="label" id="id16">[<a href="#id5">5</a>]</dt>
+<dd><a class="reference external" href="https://github.com/python/cpython/pull/30441">https://github.com/python/cpython/pull/30441</a></dd>
+<dt class="label" id="id17">[<a href="#id6">6</a>]</dt>
+<dd><a class="reference external" href="https://github.com/python/cpython/pull/29880">https://github.com/python/cpython/pull/29880</a></dd>
+<dt class="label" id="id18">[<a href="#id7">7</a>]</dt>
+<dd><a class="reference external" href="https://discuss.python.org/t/accepting-pep-654-exception-groups-and-except/10813/9">https://discuss.python.org/t/accepting-pep-654-exception-groups-and-except/10813/9</a></dd>
+<dt class="label" id="id19">[<a href="#id8">8</a>]</dt>
+<dd><a class="reference external" href="https://github.com/python/cpython/pull/28569#discussion_r721768348">https://github.com/python/cpython/pull/28569#discussion_r721768348</a></dd>
+<dt class="label" id="id20">[<a href="#id9">9</a>]</dt>
+<dd><a class="reference external" href="https://bugs.python.org/issue45607">https://bugs.python.org/issue45607</a></dd>
+<dt class="label" id="id21">[<a href="#id10">10</a>]</dt>
+<dd><a class="reference external" href="https://github.com/python/cpython/blob/69ef1b59983065ddb0b712dac3b04107c5059735/Lib/http/client.py#L596-L597">https://github.com/python/cpython/blob/69ef1b59983065ddb0b712dac3b04107c5059735/Lib/http/client.py#L596-L597</a></dd>
+<dt class="label" id="id22">[<a href="#id11">11</a>]</dt>
+<dd><a class="reference external" href="https://www.reddit.com/r/Python/comments/rmrvxv/pep_678_enriching_exceptions_with_notes/hptbul1/">https://www.reddit.com/r/Python/comments/rmrvxv/pep_678_enriching_exceptions_with_notes/hptbul1/</a></dd>
+</dl>
+</section>
+<section id="copyright">
+<h2><a class="toc-backref" href="#copyright">Copyright</a></h2>
+<p>This document is placed in the public domain or under the
+CC0-1.0-Universal license, whichever is more permissive.</p>
+</section>
+</section>
+<hr class="docutils" />
+<p>Source: <a class="reference external" href="https://github.com/python/peps/blob/main/pep-0678.rst">https://github.com/python/peps/blob/main/pep-0678.rst</a></p>
+<p>Last modified: <a class="reference external" href="https://github.com/python/peps/commits/main/pep-0678.rst">2022-02-03 10:37:16 GMT</a></p>
+
+        </article>
+        <nav id="pep-sidebar">
+            <h2>Contents</h2>
+            <p id="toc-title">PEP 678 – Enriching Exceptions with Notes</p>
+            <ul>
+<li><a class="reference internal" href="#contents">Contents</a></li>
+<li><a class="reference internal" href="#abstract">Abstract</a></li>
+<li><a class="reference internal" href="#motivation">Motivation</a><ul>
+<li><a class="reference internal" href="#example-usage">Example usage</a></li>
+<li><a class="reference internal" href="#non-goals">Non-goals</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#specification">Specification</a></li>
+<li><a class="reference internal" href="#backwards-compatibility">Backwards Compatibility</a></li>
+<li><a class="reference internal" href="#how-to-teach-this">How to Teach This</a></li>
+<li><a class="reference internal" href="#reference-implementation">Reference Implementation</a></li>
+<li><a class="reference internal" href="#rejected-ideas">Rejected Ideas</a><ul>
+<li><a class="reference internal" href="#use-print-or-logging-etc">Use <code class="docutils literal notranslate"><span class="pre">print()</span></code> (or <code class="docutils literal notranslate"><span class="pre">logging</span></code>, etc.)</a></li>
+<li><a class="reference internal" href="#raise-wrapper-explanation-from-err"><code class="docutils literal notranslate"><span class="pre">raise</span> <span class="pre">Wrapper(explanation)</span> <span class="pre">from</span> <span class="pre">err</span></code></a></li>
+<li><a class="reference internal" href="#subclass-exception-and-add-note-downstream">Subclass Exception and add <code class="docutils literal notranslate"><span class="pre">__note__</span></code> downstream</a></li>
+<li><a class="reference internal" href="#store-notes-in-exceptiongroups">Store notes in <code class="docutils literal notranslate"><span class="pre">ExceptionGroup</span></code>s</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#possible-future-enhancements">Possible Future Enhancements</a><ul>
+<li><a class="reference internal" href="#allow-any-object-and-cast-to-string-for-display">Allow any object, and cast to string for display</a></li>
+<li><a class="reference internal" href="#add-a-helper-function-contextlib-add-exc-note">Add a helper function <code class="docutils literal notranslate"><span class="pre">contextlib.add_exc_note()</span></code></a></li>
+<li><a class="reference internal" href="#augment-the-raise-statement">Augment the <code class="docutils literal notranslate"><span class="pre">raise</span></code> statement</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#references">References</a></li>
+<li><a class="reference internal" href="#copyright">Copyright</a></li>
+</ul>
+
+            <br />
+            <a id="source" href="https://github.com/python/peps/blob/main/pep-0678.rst">Page Source (GitHub)</a>
+        </nav>
+    </section>
+    <script src="../_static/colour_scheme.js"></script>
+</body>
+</html>
